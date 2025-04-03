@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -20,6 +21,10 @@ type successResponse struct {
 	Valid bool
 }
 
+type chirpResponse struct {
+	CleanedBody string `json:"cleaned_body"`
+}
+
 func (cfg *apiConfig) middlewareMetricsInc(nextHandler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -27,6 +32,34 @@ func (cfg *apiConfig) middlewareMetricsInc(nextHandler http.Handler) http.Handle
 		nextHandler.ServeHTTP(w, r)
 
 	})
+}
+func cleanProfane(chirp string) string {
+	profaneWords := map[string]bool{
+		"kerfuffle": true,
+		"sharbert":  true,
+		"fornax":    true,
+	}
+	words := strings.Split(chirp, " ")
+	for i, w := range words {
+		wordLower := strings.ToLower(w)
+		// Check if the word exactly matches a profane word (no punctuation)
+		if profaneWords[wordLower] {
+			words[i] = "****"
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Erro marshaling data:%s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(data)
 }
 
 func main() {
@@ -60,16 +93,10 @@ func main() {
 			log.Printf("The chirp can only be 140 characters long")
 			return
 		}
-		data, err := json.Marshal(successResponse{Valid: true})
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("Error marshalling json data: %s", err)
-			return
-		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(data)
+		censoredBody := cleanProfane(decodeData.Body)
+		response := chirpResponse{CleanedBody: censoredBody}
+		respondWithJSON(w, http.StatusOK, response)
 	})
 
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
