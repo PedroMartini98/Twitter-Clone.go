@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"structs"
 	"sync/atomic"
 	"time"
 
@@ -125,6 +124,7 @@ func main() {
 		type Chirp struct {
 			ID        uuid.UUID `json:"id"`
 			CreatedAt time.Time `json:"created_at"`
+			UpdatedAt time.Time `json:"updated_at"`
 			Body      string    `json:"body"`
 			UserID    uuid.UUID `json:"user_id"`
 		}
@@ -147,24 +147,23 @@ func main() {
 		}
 
 		censoredBody := cleanProfane(decodeData.Body)
-	dbChirp, err := apiCfg.dbQueries.CreateChirp(r.Context(),database.CreateChirpParams{
-		Body: censoredBody,
-		UserID: decodeData.UserID.,
+		dbChirp, err := apiCfg.dbQueries.CreateChirp(r.Context(), database.CreateChirpParams{
+			Body:   censoredBody,
+			UserID: decodeData.UserID,
 		})
 		if err != nil {
-			respondWithJSON(w,http.StatusInternalServerError,map[string]string{"error":"failed to create chirp"})
+			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create chirp"})
 			return
 		}
 
 		chirp := Chirp{
-			ID: dbChirp.ID,
+			ID:        dbChirp.ID,
 			CreatedAt: dbChirp.CreatedAt,
-			UpdatedAT: dbChirp.UpdatedAt,
-			Body: dbChirp.Body,
-			UserID: dbChirp.UserID,
+			UpdatedAt: dbChirp.UpdatedAt,
+			Body:      dbChirp.Body,
+			UserID:    dbChirp.UserID,
 		}
-		respondWithJSON(w,http.StatusOK,chirp)
-
+		respondWithJSON(w, http.StatusOK, chirp)
 
 	})
 
