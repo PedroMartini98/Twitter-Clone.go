@@ -31,6 +31,14 @@ type successResponse struct {
 	Valid bool
 }
 
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
+}
+
 type chirpResponse struct {
 	CleanedBody string `json:"cleaned_body"`
 }
@@ -121,14 +129,6 @@ func main() {
 
 	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
 
-		type Chirp struct {
-			ID        uuid.UUID `json:"id"`
-			CreatedAt time.Time `json:"created_at"`
-			UpdatedAt time.Time `json:"updated_at"`
-			Body      string    `json:"body"`
-			UserID    uuid.UUID `json:"user_id"`
-		}
-
 		type requestBody struct {
 			Body   string    `json:"body"`
 			UserID uuid.UUID `json:"user_id"`
@@ -165,6 +165,28 @@ func main() {
 		}
 		respondWithJSON(w, http.StatusOK, chirp)
 
+	})
+
+	mux.HandleFunc("GET /api/chirps", func(w http.ResponseWriter, r *http.Request) {
+
+		dbChirps, err := apiCfg.dbQueries.GetAllChirps(r.Context())
+		if err != nil {
+			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch chirps"})
+		}
+		log.Printf("dbChirps: %+v", dbChirps)
+		chirps := make([]Chirp, len(dbChirps))
+		for i, chirp := range dbChirps {
+			chirps[i] = Chirp{
+				ID:        chirp.ID,
+				CreatedAt: chirp.CreatedAt,
+				UpdatedAt: chirp.UpdatedAt,
+				Body:      chirp.Body,
+				UserID:    chirp.UserID,
+			}
+		}
+		log.Printf("chirps: %+v", chirps)
+
+		respondWithJSON(w, http.StatusOK, chirps)
 	})
 
 	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
