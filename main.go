@@ -4,19 +4,24 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/database"
-	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+	"structs"
 	"sync/atomic"
+	"time"
+
+	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/database"
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	dbQueries      *database.Queries
+	platform       string
 }
 
 type errorResponse struct {
@@ -29,6 +34,13 @@ type successResponse struct {
 
 type chirpResponse struct {
 	CleanedBody string `json:"cleaned_body"`
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(nextHandler http.Handler) http.Handler {
@@ -80,6 +92,11 @@ func main() {
 		log.Fatal("DB_URL not found in .env")
 	}
 
+	platform := os.Getenv("PLATFORM")
+	if platform == "" {
+		log.Fatal("PLATFORM not found in .env")
+	}
+
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
@@ -88,7 +105,11 @@ func main() {
 
 	dbQueries := database.New(db)
 
-	apiCfg := &apiConfig{}
+	apiCfg := &apiConfig{
+		fileserverHits: atomic.Int32{},
+		dbQueries:      dbQueries,
+		platform:       platform,
+	}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -99,29 +120,82 @@ func main() {
 
 	})
 
-	mux.HandleFunc("POST /api/validate_chirp", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
 
-		type chirp struct {
-			Body string
+		type Chirp struct {
+			ID        uuid.UUID `json:"id"`
+			CreatedAt time.Time `json:"created_at"`
+			Body      string    `json:"body"`
+			UserID    uuid.UUID `json:"user_id"`
+		}
+
+		type requestBody struct {
+			Body   string    `json:"body"`
+			UserID uuid.UUID `json:"user_id"`
 		}
 
 		decoder := json.NewDecoder(r.Body)
-		decodeData := chirp{}
+		decodeData := requestBody{}
 		err := decoder.Decode(&decodeData)
 		if err != nil {
-			log.Printf("Error decoding chirp: %s", err)
-			w.WriteHeader(http.StatusInternalServerError)
+			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "invalid request body"})
 			return
 		}
 		if len(decodeData.Body) > 140 {
-			w.WriteHeader(http.StatusBadRequest)
-			log.Printf("The chirp can only be 140 characters long")
+			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "chirps can only be 140 characters long"})
 			return
 		}
 
 		censoredBody := cleanProfane(decodeData.Body)
-		response := chirpResponse{CleanedBody: censoredBody}
-		respondWithJSON(w, http.StatusOK, response)
+	dbChirp, err := apiCfg.dbQueries.CreateChirp(r.Context(),database.CreateChirpParams{
+		Body: censoredBody,
+		UserID: decodeData.UserID.,
+		})
+		if err != nil {
+			respondWithJSON(w,http.StatusInternalServerError,map[string]string{"error":"failed to create chirp"})
+			return
+		}
+
+		chirp := Chirp{
+			ID: dbChirp.ID,
+			CreatedAt: dbChirp.CreatedAt,
+			UpdatedAT: dbChirp.UpdatedAt,
+			Body: dbChirp.Body,
+			UserID: dbChirp.UserID,
+		}
+		respondWithJSON(w,http.StatusOK,chirp)
+
+
+	})
+
+	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
+
+		type requestBody struct {
+			Email string `json:"email"`
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var req requestBody
+		if err := decoder.Decode(&req); err != nil {
+			respondWithJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		dbUser, err := apiCfg.dbQueries.CreateUser(r.Context(), req.Email)
+		if err != nil {
+			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create user"})
+			return
+		}
+
+		user := User{
+			ID:        dbUser.ID,
+			CreatedAt: dbUser.CreatedAt,
+			UpdatedAt: dbUser.UpdatedAt,
+			Email:     dbUser.Email,
+		}
+
+		respondWithJSON(w, http.StatusCreated, user)
+
 	})
 
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
@@ -147,10 +221,18 @@ func main() {
 
 	mux.HandleFunc("POST /admin/reset", func(w http.ResponseWriter, r *http.Request) {
 
-		apiCfg.fileserverHits.Store(0)
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if apiCfg.platform != "dev" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		err := apiCfg.dbQueries.DeleteAllUsers(r.Context())
+		if err != nil {
+			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete all users"})
+			return
+		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Counter reset to 0"))
+		w.Write([]byte("Users deleted"))
 	})
 
 	server := &http.Server{
@@ -159,7 +241,7 @@ func main() {
 	}
 	log.Printf("Server starting on %s", server.Addr)
 
-	err := server.ListenAndServe()
+	err = server.ListenAndServe()
 	if err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
