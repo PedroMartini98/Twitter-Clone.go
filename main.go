@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/auth"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/database"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -78,13 +79,19 @@ func cleanProfane(chirp string) string {
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	data, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Erro marshaling data:%s", err)
+		log.Printf("Error marshaling data:%s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(data)
+}
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+
+	respondWithJSON(w, code, map[string]string{"error": msg})
+
 }
 
 func main() {
@@ -117,7 +124,10 @@ func main() {
 		dbQueries:      dbQueries,
 		platform:       platform,
 	}
+
 	mux := http.NewServeMux()
+
+	//j
 
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 
@@ -138,11 +148,11 @@ func main() {
 		decodeData := requestBody{}
 		err := decoder.Decode(&decodeData)
 		if err != nil {
-			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "invalid request body"})
+			respondWithError(w, http.StatusInternalServerError, "invalid request body")
 			return
 		}
 		if len(decodeData.Body) > 140 {
-			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "chirps can only be 140 characters long"})
+			respondWithError(w, http.StatusBadRequest, "chirps can only be 140 characters long")
 			return
 		}
 
@@ -152,7 +162,7 @@ func main() {
 			UserID: decodeData.UserID,
 		})
 		if err != nil {
-			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create chirp"})
+			respondWithError(w, http.StatusInternalServerError, "failed to create chirp")
 			return
 		}
 
@@ -163,7 +173,7 @@ func main() {
 			Body:      dbChirp.Body,
 			UserID:    dbChirp.UserID,
 		}
-		respondWithJSON(w, http.StatusOK, chirp)
+		respondWithJSON(w, http.StatusCreated, chirp)
 
 	})
 
@@ -171,7 +181,8 @@ func main() {
 
 		dbChirps, err := apiCfg.dbQueries.GetAllChirps(r.Context())
 		if err != nil {
-			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch chirps"})
+			respondWithError(w, http.StatusInternalServerError, "Failed to fetch chirps")
+			return
 		}
 		log.Printf("dbChirps: %+v", dbChirps)
 		chirps := make([]Chirp, len(dbChirps))
@@ -189,22 +200,95 @@ func main() {
 		respondWithJSON(w, http.StatusOK, chirps)
 	})
 
+	mux.HandleFunc("GET /api/chirps/{chirpId}", func(w http.ResponseWriter, r *http.Request) {
+
+		chirpIdNotValidated := r.PathValue("chirpId")
+		chirpId, err := uuid.Parse(chirpIdNotValidated)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Please enter valid id format")
+			return
+		}
+
+		chirpInDB, err := apiCfg.dbQueries.GetChirpByID(r.Context(), chirpId)
+		if err != nil {
+			respondWithError(w, http.StatusNotFound, "Failed to get chirp id")
+			return
+		}
+
+		chirp := Chirp{
+			ID:        chirpInDB.ID,
+			CreatedAt: chirpInDB.CreatedAt,
+			UpdatedAt: chirpInDB.UpdatedAt,
+			Body:      chirpInDB.Body,
+			UserID:    chirpInDB.UserID,
+		}
+		respondWithJSON(w, http.StatusOK, chirp)
+
+	})
+
 	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
 
 		type requestBody struct {
-			Email string `json:"email"`
+			Email    string `json:"email"`
+			Password string `json:"password"`
 		}
 
 		decoder := json.NewDecoder(r.Body)
 		var req requestBody
 		if err := decoder.Decode(&req); err != nil {
-			respondWithJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			respondWithError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
-		dbUser, err := apiCfg.dbQueries.CreateUser(r.Context(), req.Email)
+		hashPassword, err := auth.HashPassword(req.Password)
 		if err != nil {
-			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create user"})
+			respondWithError(w, http.StatusInternalServerError, "Failed to hash password")
+			return
+		}
+
+		dbUser, err := apiCfg.dbQueries.CreateUser(r.Context(), database.CreateUserParams{Email: req.Email, HashedPassword: hashPassword})
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to create user")
+			return
+		}
+
+		user := User{
+			ID:        dbUser.ID,
+			CreatedAt: dbUser.CreatedAt,
+			UpdatedAt: dbUser.UpdatedAt,
+			Email:     dbUser.Email,
+			// não colocar a senha de propósito por segurança
+		}
+
+		respondWithJSON(w, http.StatusCreated, user)
+
+	})
+
+	// k
+	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
+
+		type requestBody struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var req requestBody
+		err := decoder.Decode(&req)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Error deconding json")
+			return
+		}
+
+		dbUser, err := apiCfg.dbQueries.GetUserByEmail(r.Context(), req.Email)
+		if err != nil {
+			respondWithError(w, http.StatusNotFound, "User not found")
+			return
+		}
+
+		err = auth.CheckPasswordHash(dbUser.HashedPassword, req.Password)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Invalid password")
 			return
 		}
 
@@ -215,7 +299,7 @@ func main() {
 			Email:     dbUser.Email,
 		}
 
-		respondWithJSON(w, http.StatusCreated, user)
+		respondWithJSON(w, http.StatusOK, user)
 
 	})
 
@@ -249,7 +333,7 @@ func main() {
 
 		err := apiCfg.dbQueries.DeleteAllUsers(r.Context())
 		if err != nil {
-			respondWithJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete all users"})
+			respondWithError(w, http.StatusInternalServerError, "Failed to delete all users")
 			return
 		}
 		w.WriteHeader(http.StatusOK)
