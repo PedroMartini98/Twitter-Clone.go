@@ -33,3 +33,38 @@ SELECT * FROM chirps WHERE id = $1;
 SELECT id, created_at, updated_at, email, hashed_password
 FROM users
 WHERE email = $1;
+
+
+-- name: StoreRefreshToken :one
+INSERT INTO refresh_tokens (token, user_id, created_at, updated_at, expires_at, revoked_at)
+VALUES (
+    $1, -- token
+    $2, -- user_id
+    NOW(), -- created_at
+    NOW(), -- updated_at
+    NOW() + INTERVAL '60 days', -- expires_at
+    NULL -- revoked_at
+)
+RETURNING *;
+
+-- name: GetUserFromRefreshToken :one
+SELECT user_id
+FROM refresh_tokens
+WHERE token = $1
+AND expires_at > NOW()
+AND revoked_at IS NULL;
+
+-- name: RevokeRefreshToken :one
+UPDATE refresh_tokens
+SET revoked_at = NOW(),
+    updated_at = NOW()
+WHERE token = $1
+RETURNING *;
+
+-- name: UpdateUser :one
+UPDATE users
+SET email = $2,
+    hashed_password = $3,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, created_at, updated_at, email;

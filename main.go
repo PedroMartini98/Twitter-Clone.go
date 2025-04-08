@@ -22,6 +22,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	dbQueries      *database.Queries
 	platform       string
+	jwtSecret      string
 }
 
 type errorResponse struct {
@@ -45,10 +46,12 @@ type chirpResponse struct {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	Token        string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(nextHandler http.Handler) http.Handler {
@@ -111,6 +114,11 @@ func main() {
 		log.Fatal("PLATFORM not found in .env")
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET not found in .env")
+	}
+
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
@@ -123,11 +131,10 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		dbQueries:      dbQueries,
 		platform:       platform,
+		jwtSecret:      jwtSecret,
 	}
 
 	mux := http.NewServeMux()
-
-	//j
 
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 
@@ -140,15 +147,26 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
 
 		type requestBody struct {
-			Body   string    `json:"body"`
-			UserID uuid.UUID `json:"user_id"`
+			Body string `json:"body"`
+		}
+
+		tokenString, err := auth.GetBearerToken(r.Header)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Missing or invalid Authorization header")
+			return
+		}
+
+		userID, err := auth.ValidateJWT(tokenString, apiCfg.jwtSecret)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Expired or invalid jwt token")
+			return
 		}
 
 		decoder := json.NewDecoder(r.Body)
 		decodeData := requestBody{}
-		err := decoder.Decode(&decodeData)
+		err = decoder.Decode(&decodeData)
 		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "invalid request body")
+			respondWithError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
 		if len(decodeData.Body) > 140 {
@@ -159,7 +177,7 @@ func main() {
 		censoredBody := cleanProfane(decodeData.Body)
 		dbChirp, err := apiCfg.dbQueries.CreateChirp(r.Context(), database.CreateChirpParams{
 			Body:   censoredBody,
-			UserID: decodeData.UserID,
+			UserID: userID,
 		})
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "failed to create chirp")
@@ -264,7 +282,49 @@ func main() {
 
 	})
 
-	// k
+	mux.HandleFunc("PUT /api/users", func(w http.ResponseWriter, r *http.Request) {
+		type requestBody struct {
+			NewEmail    string `json:"email"`
+			NewPassword string `json:"password"`
+		}
+		tokenString, err := auth.GetBearerToken(r.Header)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Missing or invalid Authorization header")
+			return
+		}
+
+		userID, err := auth.ValidateJWT(tokenString, jwtSecret)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Expired or invalid jwt token")
+			return
+		}
+
+		var req requestBody
+		err = json.NewDecoder(r.Body).Decode(&req)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		hashedPassword, err := auth.HashPassword(req.NewPassword)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "failed to hash the password")
+			return
+		}
+
+		updatedUser, err := apiCfg.dbQueries.UpdateUser(r.Context(), database.UpdateUserParams{
+			ID:             userID,
+			Email:          req.NewEmail,
+			HashedPassword: hashedPassword,
+		})
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to update the user")
+			return
+		}
+
+		respondWithJSON(w, http.StatusOK, updatedUser)
+	})
+
 	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
 
 		type requestBody struct {
@@ -292,15 +352,84 @@ func main() {
 			return
 		}
 
+		token, err := auth.MakeJWT(dbUser.ID, jwtSecret, 1*time.Hour)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to create jwt")
+			return
+		}
+
+		refreshToken, err := auth.MakeRefreshToken()
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to create refreshToken")
+			return
+		}
+
 		user := User{
-			ID:        dbUser.ID,
-			CreatedAt: dbUser.CreatedAt,
-			UpdatedAt: dbUser.UpdatedAt,
-			Email:     dbUser.Email,
+			ID:           dbUser.ID,
+			CreatedAt:    dbUser.CreatedAt,
+			UpdatedAt:    dbUser.UpdatedAt,
+			Email:        dbUser.Email,
+			Token:        token,
+			RefreshToken: refreshToken,
+		}
+
+		_, err = apiCfg.dbQueries.StoreRefreshToken(r.Context(), database.StoreRefreshTokenParams{
+			Token:  refreshToken,
+			UserID: dbUser.ID,
+		})
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to store refresh token")
+			return
 		}
 
 		respondWithJSON(w, http.StatusOK, user)
 
+	})
+
+	mux.HandleFunc("POST /api/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshToken, err := auth.GetBearerToken(r.Header)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Missing or invalid Authorization header")
+			return
+		}
+
+		userID, err := apiCfg.dbQueries.GetUserFromRefreshToken(r.Context(), refreshToken)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Invalid or expired refresh token")
+			return
+		}
+
+		acessToken, err := auth.MakeJWT(userID, apiCfg.jwtSecret, 1*time.Hour)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to create acess token")
+			return
+		}
+		reponse := struct {
+			Token string `json:"token"`
+		}{
+			Token: acessToken,
+		}
+
+		respondWithJSON(w, http.StatusOK, reponse)
+	})
+
+	mux.HandleFunc("POST /api/revoke", func(w http.ResponseWriter, r *http.Request) {
+		refreshToken, err := auth.GetBearerToken(r.Header)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Missing or invalid Authorization header")
+			return
+		}
+
+		_, err = apiCfg.dbQueries.RevokeRefreshToken(r.Context(), refreshToken)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			respondWithError(w, http.StatusInternalServerError, "Failed to revoke refresh token")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))

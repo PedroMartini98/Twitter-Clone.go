@@ -155,3 +155,106 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 	)
 	return i, err
 }
+
+const getUserFromRefreshToken = `-- name: GetUserFromRefreshToken :one
+SELECT user_id
+FROM refresh_tokens
+WHERE token = $1
+AND expires_at > NOW()
+AND revoked_at IS NULL
+`
+
+func (q *Queries) GetUserFromRefreshToken(ctx context.Context, token string) (uuid.UUID, error) {
+	row := q.db.QueryRowContext(ctx, getUserFromRefreshToken, token)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
+const revokeRefreshToken = `-- name: RevokeRefreshToken :one
+UPDATE refresh_tokens
+SET revoked_at = NOW(),
+    updated_at = NOW()
+WHERE token = $1
+RETURNING token, created_at, updated_at, user_id, expires_at, revoked_at
+`
+
+func (q *Queries) RevokeRefreshToken(ctx context.Context, token string) (RefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, revokeRefreshToken, token)
+	var i RefreshToken
+	err := row.Scan(
+		&i.Token,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const storeRefreshToken = `-- name: StoreRefreshToken :one
+INSERT INTO refresh_tokens (token, user_id, created_at, updated_at, expires_at, revoked_at)
+VALUES (
+    $1, -- token
+    $2, -- user_id
+    NOW(), -- created_at
+    NOW(), -- updated_at
+    NOW() + INTERVAL '60 days', -- expires_at
+    NULL -- revoked_at
+)
+RETURNING token, created_at, updated_at, user_id, expires_at, revoked_at
+`
+
+type StoreRefreshTokenParams struct {
+	Token  string
+	UserID uuid.UUID
+}
+
+func (q *Queries) StoreRefreshToken(ctx context.Context, arg StoreRefreshTokenParams) (RefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, storeRefreshToken, arg.Token, arg.UserID)
+	var i RefreshToken
+	err := row.Scan(
+		&i.Token,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const updateUser = `-- name: UpdateUser :one
+UPDATE users
+SET email = $2,
+    hashed_password = $3,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, created_at, updated_at, email
+`
+
+type UpdateUserParams struct {
+	ID             uuid.UUID
+	Email          string
+	HashedPassword string
+}
+
+type UpdateUserRow struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Email     string
+}
+
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error) {
+	row := q.db.QueryRowContext(ctx, updateUser, arg.ID, arg.Email, arg.HashedPassword)
+	var i UpdateUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+	)
+	return i, err
+}
