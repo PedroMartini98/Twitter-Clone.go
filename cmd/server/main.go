@@ -153,7 +153,7 @@ func main() {
 			return
 		}
 
-		chirp := database.Chirp{
+		chirp := model.Chirp{
 			ID:        dbChirp.ID,
 			CreatedAt: dbChirp.CreatedAt,
 			UpdatedAt: dbChirp.UpdatedAt,
@@ -181,10 +181,10 @@ func main() {
 				return
 			}
 
-			resultChirps := make([]Chirp, len(dbChirpsByAuthor))
+			resultChirps := make([]model.Chirp, len(dbChirpsByAuthor))
 
 			for i, chirp := range dbChirpsByAuthor {
-				resultChirps[i] = Chirp{
+				resultChirps[i] = model.Chirp{
 					ID:        chirp.ID,
 					CreatedAt: chirp.CreatedAt,
 					UpdatedAt: chirp.UpdatedAt,
@@ -214,9 +214,9 @@ func main() {
 			return
 		}
 		log.Printf("dbChirps: %+v", dbChirps)
-		chirps := make([]Chirp, len(dbChirps))
+		chirps := make([]model.Chirp, len(dbChirps))
 		for i, chirp := range dbChirps {
-			chirps[i] = Chirp{
+			chirps[i] = model.Chirp{
 				ID:        chirp.ID,
 				CreatedAt: chirp.CreatedAt,
 				UpdatedAt: chirp.UpdatedAt,
@@ -253,7 +253,7 @@ func main() {
 			return
 		}
 
-		chirp := Chirp{
+		chirp := model.Chirp{
 			ID:        chirpInDB.ID,
 			CreatedAt: chirpInDB.CreatedAt,
 			UpdatedAt: chirpInDB.UpdatedAt,
@@ -339,7 +339,7 @@ func main() {
 			return
 		}
 
-		user := User{
+		user := model.User{
 			ID:          dbUser.ID,
 			CreatedAt:   dbUser.CreatedAt,
 			UpdatedAt:   dbUser.UpdatedAt,
@@ -434,7 +434,7 @@ func main() {
 			return
 		}
 
-		user := User{
+		user := model.User{
 			ID:           dbUser.ID,
 			CreatedAt:    dbUser.CreatedAt,
 			UpdatedAt:    dbUser.UpdatedAt,
@@ -470,7 +470,7 @@ func main() {
 			return
 		}
 
-		acessToken, err := auth.MakeJWT(userID, apiCfg.jwtSecret, 1*time.Hour)
+		acessToken, err := auth.MakeJWT(userID, cfg.JWTSecret, 1*time.Hour)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Failed to create acess token")
 			return
@@ -532,7 +532,7 @@ func main() {
 			return
 		}
 
-		if apiKey != apiCfg.polkaKey {
+		if apiKey != cfg.PolkaKey {
 			respondWithError(w, http.StatusUnauthorized, "ApiKey doesn't match the server's")
 			return
 		}
@@ -576,7 +576,7 @@ func main() {
 
 	mux.HandleFunc("POST /admin/reset", func(w http.ResponseWriter, r *http.Request) {
 
-		if apiCfg.platform != "dev" {
+		if cfg.Platform != "dev" {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
