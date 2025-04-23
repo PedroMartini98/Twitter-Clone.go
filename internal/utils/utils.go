@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func cleanProfane(chirp string) string {
+func CleanProfane(chirp string) string {
 	profaneWords := map[string]bool{
 		"kerfuffle": true,
 		"sharbert":  true,
@@ -24,7 +24,7 @@ func cleanProfane(chirp string) string {
 	return strings.Join(words, " ")
 }
 
-func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		log.Printf("Error marshaling data:%s", err)
@@ -36,8 +36,9 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.WriteHeader(code)
 	w.Write(data)
 }
-func respondWithError(w http.ResponseWriter, code int, msg string) {
 
-	respondWithJSON(w, code, map[string]string{"error": msg})
+func RespondWithError(w http.ResponseWriter, code int, msg string) {
+
+	RespondWithJSON(w, code, map[string]string{"error": msg})
 
 }
