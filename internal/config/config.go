@@ -12,6 +12,7 @@ type Config struct {
 	Platform  string
 	JwtSecret string
 	PolkaKey  string
+	Port      string
 }
 
 func LoadConfig() (*Config, error) {
@@ -24,6 +25,7 @@ func LoadConfig() (*Config, error) {
 		Platform:  os.Getenv("PLATFORM"),
 		JwtSecret: os.Getenv("JWT_SECRET"),
 		PolkaKey:  os.Getenv("POLKA_KEY"),
+		Port:      os.Getenv("PORT"),
 	}
 
 	if config.DBURL == "" {
@@ -40,6 +42,9 @@ func LoadConfig() (*Config, error) {
 
 	if config.PolkaKey == "" {
 		return nil, fmt.Errorf("POLKA_KEY not found in .env")
+	}
+	if config.Port == "" {
+		return nil, fmt.Errorf("Port not found in .env")
 	}
 	return config, nil
 }

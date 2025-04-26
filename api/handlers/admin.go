@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/PedroMartini98/Twitter-Clone.go.git/api/middleware"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/database"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/utils"
 )
@@ -11,12 +12,14 @@ import (
 type AdminHandler struct {
 	dbQueries *database.Queries
 	platform  string
+	metrics   *middleware.MetricsMiddleware
 }
 
-func NewAdminHandler(dbQueries *database.Queries, platform string) *AdminHandler {
+func NewAdminHandler(dbQueries *database.Queries, platform string, metrics *middleware.MetricsMiddleware) *AdminHandler {
 	return &AdminHandler{
 		dbQueries: dbQueries,
 		platform:  platform,
+		metrics:   metrics,
 	}
 }
 
@@ -32,7 +35,7 @@ func (h *AdminHandler) GetMetricts(w http.ResponseWriter, r *http.Request) {
   </body>
 </html>`
 
-	fmt.Fprintf(w, htmlTemplate, apiCfg.fileserverHits.Load())
+	fmt.Fprintf(w, htmlTemplate, h.metrics.GetHits())
 
 }
 

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/auth"
+	"github.com/PedroMartini98/Twitter-Clone.go.git/api/middleware"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/database"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/models"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/utils"
@@ -31,21 +31,15 @@ func (h *ChirpHandler) CreateChirp(w http.ResponseWriter, r *http.Request) {
 		Body string `json:"body"`
 	}
 
-	tokenString, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing or invalid Authorization header")
-		return
-	}
-
-	userID, err := auth.ValidateJWT(tokenString, h.jwtSecret)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Expired or invalid jwt token")
+	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "User not authenticated")
 		return
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	decodeData := requestBody{}
-	err = decoder.Decode(&decodeData)
+	err := decoder.Decode(&decodeData)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -78,21 +72,15 @@ func (h *ChirpHandler) CreateChirp(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChirpHandler) DeleteChirp(w http.ResponseWriter, r *http.Request) {
 
-	tokenString, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing or invalid Authorization token")
+	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "User not authenticated")
 		return
 	}
 
-	userID, err := auth.ValidateJWT(tokenString, h.jwtSecret)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Expired or invalid jwt token")
-		return
-	}
+	chirpNotYetValidated := r.PathValue("chirpID")
 
-	chirpNotValidated := r.PathValue("chirpID")
-
-	chirpID, err := uuid.Parse(chirpNotValidated)
+	chirpID, err := uuid.Parse(chirpNotYetValidated)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid id format")
 		return
@@ -172,8 +160,8 @@ func (h *ChirpHandler) GetChirps(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChirpHandler) GetChirpByID(w http.ResponseWriter, r *http.Request) {
 
-	chirpIdNotValidated := r.PathValue("chirpId")
-	chirpId, err := uuid.Parse(chirpIdNotValidated)
+	chirpIdNotYetValidated := r.PathValue("chirpId")
+	chirpId, err := uuid.Parse(chirpIdNotYetValidated)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Please enter valid id format")
 		return

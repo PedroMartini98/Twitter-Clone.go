@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/PedroMartini98/Twitter-Clone.go.git/api/middleware"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/auth"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/database"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/models"
@@ -18,7 +19,6 @@ type UserHandler struct {
 func NewUserHandler(dbQueries *database.Queries, jwtSecret string) *UserHandler {
 	return &UserHandler{
 		dbQueries: dbQueries,
-		jwtSecret: jwtSecret,
 	}
 }
 
@@ -66,20 +66,15 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		NewEmail    string `json:"email"`
 		NewPassword string `json:"password"`
 	}
-	tokenString, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Missing or invalid Authorization header")
-		return
-	}
 
-	userID, err := auth.ValidateJWT(tokenString, h.jwtSecret)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Expired or invalid jwt token")
+	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		utils.RespondWithError(w, http.StatusUnauthorized, "User not authenticated")
 		return
 	}
 
 	var req requestBody
-	err = json.NewDecoder(r.Body).Decode(&req)
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid request body")
 		return
