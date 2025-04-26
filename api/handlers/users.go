@@ -13,10 +13,9 @@ import (
 
 type UserHandler struct {
 	dbQueries *database.Queries
-	jwtSecret string
 }
 
-func NewUserHandler(dbQueries *database.Queries, jwtSecret string) *UserHandler {
+func NewUserHandler(dbQueries *database.Queries) *UserHandler {
 	return &UserHandler{
 		dbQueries: dbQueries,
 	}
@@ -67,14 +66,14 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		NewPassword string `json:"password"`
 	}
 
-	userID, ok := middleware.UserIDFromContext(r.Context())
-	if !ok {
+	userID, err := middleware.UserIDFromContext(r.Context())
+	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "User not authenticated")
 		return
 	}
 
 	var req requestBody
-	err := json.NewDecoder(r.Body).Decode(&req)
+	err = json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid request body")
 		return

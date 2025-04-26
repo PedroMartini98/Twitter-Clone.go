@@ -34,8 +34,8 @@ func main() {
 
 	adminHandler := handlers.NewAdminHandler(dbQueries, cfg.Platform, metricsMiddleware)
 	authHandler := handlers.NewAuthHandler(dbQueries, cfg.JwtSecret)
-	chirpHandler := handlers.NewChirpHandler(dbQueries, cfg.JwtSecret)
-	userHandler := handlers.NewUserHandler(dbQueries, cfg.JwtSecret)
+	chirpHandler := handlers.NewChirpHandler(dbQueries)
+	userHandler := handlers.NewUserHandler(dbQueries)
 	webhookHandler := handlers.NewWeebHookHandler(dbQueries, cfg.PolkaKey)
 
 	// Admin routes

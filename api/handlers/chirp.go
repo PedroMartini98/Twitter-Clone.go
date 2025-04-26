@@ -15,13 +15,11 @@ import (
 
 type ChirpHandler struct {
 	dbQueries *database.Queries
-	jwtSecret string
 }
 
-func NewChirpHandler(dbQueries *database.Queries, jwtSecret string) *ChirpHandler {
+func NewChirpHandler(dbQueries *database.Queries) *ChirpHandler {
 	return &ChirpHandler{
 		dbQueries: dbQueries,
-		jwtSecret: jwtSecret,
 	}
 }
 
@@ -31,15 +29,15 @@ func (h *ChirpHandler) CreateChirp(w http.ResponseWriter, r *http.Request) {
 		Body string `json:"body"`
 	}
 
-	userID, ok := middleware.UserIDFromContext(r.Context())
-	if !ok {
+	userID, err := middleware.UserIDFromContext(r.Context())
+	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "User not authenticated")
 		return
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	decodeData := requestBody{}
-	err := decoder.Decode(&decodeData)
+	err = decoder.Decode(&decodeData)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -72,8 +70,8 @@ func (h *ChirpHandler) CreateChirp(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChirpHandler) DeleteChirp(w http.ResponseWriter, r *http.Request) {
 
-	userID, ok := middleware.UserIDFromContext(r.Context())
-	if !ok {
+	userID, err := middleware.UserIDFromContext(r.Context())
+	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "User not authenticated")
 		return
 	}
