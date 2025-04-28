@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/PedroMartini98/Twitter-Clone.go.git/api/middleware"
+	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/api/middleware"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/database"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/models"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/utils"

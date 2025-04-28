@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/PedroMartini98/Twitter-Clone.go.git/api/handlers"
-	"github.com/PedroMartini98/Twitter-Clone.go.git/api/middleware"
+	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/api/handlers"
+	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/api/middleware"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/config"
 	"github.com/PedroMartini98/Twitter-Clone.go.git/internal/database"
 	_ "github.com/lib/pq"

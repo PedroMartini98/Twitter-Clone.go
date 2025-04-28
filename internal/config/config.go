@@ -16,8 +16,11 @@ type Config struct {
 }
 
 func LoadConfig() (*Config, error) {
-	if err := godotenv.Load(); err != nil {
-		return nil, fmt.Errorf("Failed to load env:%v", err)
+	// Vê se já tem um .env ai, só então carrega
+	if os.Getenv("DB_URL") == "" {
+		if err := godotenv.Load(); err != nil {
+			return nil, fmt.Errorf("failed to load .env file: %v", err)
+		}
 	}
 
 	config := &Config{

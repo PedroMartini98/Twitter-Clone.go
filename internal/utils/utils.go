@@ -9,9 +9,9 @@ import (
 
 func CleanProfane(chirp string) string {
 	profaneWords := map[string]bool{
-		"kerfuffle": true,
-		"sharbert":  true,
-		"fornax":    true,
+		"fuck": true,
+		"shit": true,
+		"cunt": true,
 	}
 	words := strings.Split(chirp, " ")
 	for i, w := range words {
