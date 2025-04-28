@@ -4,6 +4,7 @@
 - APIs REST, como fazer endpoints usando verbos apropriados. 
 - Autenticação e segurança incluindo hashing de senhas, o uso de JWT e proteção de rotas.
 - O uso do PostgresSQL, como fazer migrações e gerenciar dados.
+- O uso de Docker Compose (~~Pra ninguém dizer que na minha maquina não roda~~)
 - Por fim a implementação de webhooks e a integração segura com sistemas externos.
 - Além de demonstrar o uso dos conceitos básicos de Go(~~Se até o typescript se rendeu eu também me rendo~~)
 
@@ -33,9 +34,8 @@
 
 ### Pré-requisitos
 
-- Go 1.22 ou superior
-- PostgreSQL
-- Git
+- Docker e Docker Compose
+- Go 1.24 (para desenvolvimento)
 
 ### Instalação
 
@@ -49,21 +49,22 @@
    ```
    DB_URL=postgresql://username:password@localhost:5432/chirpy?sslmode=disable
    JWT_SECRET=sua_chave_secreta_jwt
-   POLKA_KEY=sua_chave_de_integracao_polka
+   POLKA_KEY=sua_chave_de_integracao_polka # Pode inventar qualquer coisa
    PLATFORM=dev  # Use 'prod' para produção
+   PORT=8080 # Ou o port que preferir
    ```
 
-3. Instale as dependências
+3. Inicie o Docker Compose
    ```
-   go mod download
+   docker-compose up -d --build
+   ```
+O servidor iniciará no port definido no .env
+
+4. Para parar o servidor
+   ```
+   docker-compose down
    ```
 
-4. Execute o servidor
-   ```
-   go run main.go
-   ```
-
-O servidor iniciará na porta 8080.
 
 ## API Endpoints
 
@@ -85,11 +86,11 @@ O servidor iniciará na porta 8080.
   - Parametros de busca:
     - `author_id` - Filtar por usuário
     - `sort` - Ordena os chirps por ordem de criação (`asc` or `desc`)
-- `GET /api/chirps/{chirpId}` - Pega um chirp espicífo pelo id
-- `DELETE /api/chirps/{chirpId}` - Excluir um chirp (requer autenticação do criador do chirp)
+- `GET /api/chirps/{chirpID}` - Pega um chirp espicífo pelo id
+- `DELETE /api/chirps/{chirpID}` - Excluir um chirp (requer autenticação do criador do chirp)
 
 ### Polka Integration
-- `POST /api/polka/webhooks` - Endpoint do webhook do "Polka" (requer chave de API)
+- `POST /api/polka/webhooks` - Endpoint do webhook do "Polka" (Weebhook invetado só pra fins de estudo)
 
 ### Admin
 - `GET /admin/metrics` - Visualizar o uso do servidor
@@ -191,22 +192,19 @@ POST /admin/reset
 
 ### Estrutura de Arquivos
 ```
-/
-├── main.go                    # Arquivo principal da aplicação
-├── assets/                    # Ativos estáticos
-├── internal/                  # Pacotes internos
-│   ├── auth/                  # Lógica de autenticação
-│   └── database/              # Código gerado para o banco de dados
-├── sql/                       # Arquivos SQL
-│   ├── schema/                # Esquemas de migração
-│   │   ├── 001_users.sql      # Criação da tabela de usuários
-│   │   ├── 002_chirps.sql     # Criação da tabela de chirps
-│   │   ├── 003_passwrods.sql  # Alterações na tabela de senhas
-│   │   ├── 004_*.sql          # Scripts de migração para tokens
-│   │   └── 005_*.up.sql       # Script para adicionar Chirpy Red
-│   └── queries/               # Consultas SQL
-│       └── queries.sql        # Consultas para geração de código
-├── sqlc.yaml                  # Configuração do SQLc
-├── go.mod                     # Dependências Go
-└── go.sum                     # Checksums das dependências
+├── cmd/
+│   └── server/        # Entry point da aplicação
+├── internal/
+│   ├── api/           # API handlers e middleware
+│   ├── auth/          # Sistemas de autenticação
+│   ├── config/        # Cofiguração de variaveis de environment
+│   ├── database/      # Modelos e queries da database
+│   ├── models/        # Modelos para respostas da API
+│   └── utils/         # Funções de utilidade geral (pra aplicar o DRY do clean code)
+├── sql/
+│   ├── queries/       # SQL queries para o SQLC
+│   └── schema/        # Schemas para migrações
+├── assets/            # Arquivos para entrega (só uma imagem pra fins de estudo)
+├── Dockerfile         # Configuração do Docker
+└── docker-compose.yaml # Configuração do Docker Compose
 ```
